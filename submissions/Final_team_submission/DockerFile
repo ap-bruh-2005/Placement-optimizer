@@ -8,13 +8,12 @@ ENV PYTHONPATH="/workspace:/workspace/external/MacroPlacement/CodeElements/Plc_c
 
 RUN python -m pip install --upgrade pip setuptools wheel
 
-# Include uv in case the evaluator uses uv-style commands inside the image.
+# Useful if the evaluator uses uv-style commands.
 RUN pip install --no-cache-dir uv
 
 # PyTorch Geometric dependencies for torch 2.5.x + CUDA 12.4.
-# These are installed at build time because runtime may be airgapped.
+# These install at build time, so runtime can be air-gapped.
 RUN pip install --no-cache-dir pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv \
     -f https://data.pyg.org/whl/torch-2.5.0+cu124.html
 
 RUN pip install --no-cache-dir torch-geometric
-

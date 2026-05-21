@@ -61,7 +61,7 @@ echo ""
 # Run with air-gapping and resource limits
 timeout 7200 docker run --rm \
     --network none \
-    --gpus all \
+#    --gpus all \
     --memory 64g \
     --cpus 16 \
     $MOUNT_ARGS \

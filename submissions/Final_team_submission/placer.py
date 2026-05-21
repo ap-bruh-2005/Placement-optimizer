@@ -117,7 +117,7 @@ class MyPlacer:
                     lambda_cong_start=0.0,
                     lambda_cong_end=0.10,
                     lambda_repel=500.0,
-                    seeds=(0,),
+                    seeds=(0,1),
                     use_softplus_cong=False,
                     init_jitter=0.003,
                     official_eval_every=10,
@@ -216,9 +216,6 @@ def hard_overlap_count(pos, benchmark, gap=1e-3):
     return int(((ox>0)&(oy>0)).sum().item()//2)
 
 
-
-# newer version: Final-only full pairwise legalization replaces the grid-neighbor version above.
-# newer version: This is intentionally O(N^2), but it must be called only after optimization, not inside the loop.
 def legalize_hard_macros(pos, benchmark, gap=1e-3, max_passes=200, damping=1.0):
     pos = pos.detach().clone().cpu()
     sizes = benchmark.macro_sizes.detach().clone().cpu()
@@ -314,14 +311,6 @@ def legalize_hard_macros(pos, benchmark, gap=1e-3, max_passes=200, damping=1.0):
     return pos
 
 
-# =============================================================================
-# Net extraction from PlacementCost (plc)
-#
-# Net data lives in plc.nets, NOT benchmark tensors.
-# plc.nets : {driver_pin -> [sink_pins]}, pin names = "MACRO/PIN"
-# Results cached per benchmark — computed once per session.
-# =============================================================================
-
 _NET_CACHE  = {}
 _EDGE_CACHE = {}
 _CONN_CACHE = {}
@@ -385,21 +374,7 @@ def build_knn_edges(pos, k=8):
 
 
 def build_net_plus_geom_edges(plc, benchmark, pos, k_net_fallback=8, k_geom=8):
-    """
-    Build the graph used by the GNN as a union of:
-      1. static netlist connectivity edges
-      2. dynamic geometric KNN edges from the current placement
 
-    Why this patch matters:
-      netlist-only edges make it easy for the GNN to learn a benchmark-level
-      average congestion value. Congestion is spatial, so the model also needs
-      local geometry edges that change with placement.
-
-    Note:
-      edge construction itself is non-differentiable because it uses KNN/top-k,
-      but the node features still depend on P, so gradients can flow through
-      make_node_features(...).
-    """
     net_ei = build_net_edges(plc, benchmark, k_fallback=k_net_fallback).detach().cpu()
 
     pos_cpu = pos.detach().cpu()
@@ -587,9 +562,7 @@ def _objective_scales(P0, benchmark, plc, trained_model=None, k_graph=8):
             scales["cong"] = _safe_scale(cong0)
     return scales
 
-# newer version: Full O(N^2) hard macro overlap penalty.
-# newer version: Use this in both analytical and hybrid if runtime is acceptable.
-# newer version: This is differentiable and safe inside Adam; it is NOT the hard legalizer.
+
 def full_hard_repulsion_penalty(P, benchmark, gap=1e-3):
     hard = benchmark.get_hard_macro_mask().to(P.device)
     idx = torch.where(hard)[0]
@@ -622,9 +595,7 @@ def full_hard_repulsion_penalty(P, benchmark, gap=1e-3):
     return overlap_area / total_hard_area
 
 
-# newer version: GNN congestion term.
-# newer version: Default is raw prediction, because softplus can flatten/shift the gradient.
-# newer version: If raw outputs become unstable, set use_softplus=True.
+
 def gnn_congestion_term(P, benchmark, plc, trained_model, k_graph=8, k_geom=8, use_softplus=False):
     trained_model.eval()
 
@@ -651,8 +622,7 @@ def gnn_congestion_term(P, benchmark, plc, trained_model, k_graph=8, k_geom=8, u
     return pred_cong.mean()
 
 
-# newer version: Backward-compatible wrapper.
-# newer version: Congestion is the only learned term used by the hybrid placer.
+
 def gnn_physics_terms(P, benchmark, plc, trained_model, k_graph=8):
     J_cong = gnn_congestion_term(
         P,
@@ -668,8 +638,6 @@ def gnn_physics_terms(P, benchmark, plc, trained_model, k_graph=8):
     return J_cong, J_wl, J_dens
 
 
-# newer version: Hybrid adaptive weights.
-# newer version: Congestion can be strong, but only after overlap pressure is basically gone.
 def adaptive_hybrid_weights(
     progress,
     J_repel,
@@ -686,20 +654,14 @@ def adaptive_hybrid_weights(
     lam_d_eff = base_lam_d
 
     if r > repel_hi:
-        # newer version: Overlap still meaningful.
-        # newer version: No GNN steering. Make legality dominant.
         lam_c_eff = 0.0
         lam_r_eff = min(max_lam_r, base_lam_r * 10.0 * (1.0 + 2.0 * progress))
 
     elif r > repel_lo:
-        # newer version: Nearly legal.
-        # newer version: Weakly turn on GNN while still prioritizing repulsion.
         lam_c_eff = 0.25 * base_lam_c
         lam_r_eff = min(max_lam_r, base_lam_r * 4.0 * (1.0 + progress))
 
     else:
-        # newer version: Legal-ish geometry.
-        # newer version: Now the GNN congestion residual is allowed to matter.
         lam_c_eff = base_lam_c
         lam_r_eff = base_lam_r
 
@@ -832,11 +794,6 @@ def safe_official_eval_snapshot(
 ):
     """
     Evaluates a detached snapshot using official proxy.
-
-    Important:
-      - Does NOT modify the optimizer tensor.
-      - Optionally legalizes only the copied snapshot.
-      - Returns None if invalid or proxy fails.
     """
     try:
         P_eval = P.detach().cpu().clone()
@@ -935,9 +892,7 @@ def maybe_decay_lr(opt, bad_count, patience, decay, min_lr, prefix=""):
 
     return 0
 
-# newer version: Hybrid GNN placer.
-# newer version: Adam-only, full pairwise overlap penalty, gated GNN congestion residual.
-# newer version: Hard legalizer remains final-only.
+
 class HybridAnalyticalPlacer:
     def __init__(
         self,
@@ -951,7 +906,6 @@ class HybridAnalyticalPlacer:
         lambda_dens_start=0.10,
         lambda_dens_end=3.0,
         lambda_cong_start=0.0,
-        # newer version: Can be meaningful now because overlap-gating controls when it activates.
         lambda_cong_end=0.05,
         lambda_bound=10.0,
         lambda_repel=1000.0,
