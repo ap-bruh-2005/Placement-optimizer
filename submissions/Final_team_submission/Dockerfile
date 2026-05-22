@@ -16,7 +16,8 @@ RUN pip install --no-cache-dir \
     tqdm \
     numpy \
     pandas \
-    protobuf
+    protobuf \
+    matplotlib
 
 # Extra common deps used by official eval docker
 RUN pip install --no-cache-dir \
@@ -24,8 +25,8 @@ RUN pip install --no-cache-dir \
     dccp \
     numba
 
-# PyTorch Geometric dependencies for torch 2.5.x + CUDA 12.4
+# PyTorch Geometric dependencies for torch 2.5.1 + CUDA 12.4
 RUN pip install --no-cache-dir pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv \
-    -f https://data.pyg.org/whl/torch-2.5.0+cu124.html
+    -f https://data.pyg.org/whl/torch-2.5.1+cu124.html
 
 RUN pip install --no-cache-dir torch-geometric
