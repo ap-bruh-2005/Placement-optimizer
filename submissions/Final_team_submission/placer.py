@@ -117,7 +117,7 @@ class MyPlacer:
                     lambda_cong_start=0.0,
                     lambda_cong_end=0.10,
                     lambda_repel=500.0,
-                    seeds=(0,1),
+                    seeds=(0,),
                     use_softplus_cong=False,
                     init_jitter=0.003,
                     official_eval_every=10,
